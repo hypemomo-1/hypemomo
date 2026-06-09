@@ -1,0 +1,17 @@
+Thank you email error: Connection timeout
+Notify email error: connect ENETUNREACH 2607:f8b0:4023:2c03::6c:465 - Local (:::0)
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> Running 'npm run start'
+> react-example@0.0.0 start
+> tsx server.ts
+◇ injected env (0) from .env // tip: ◈ encrypted .env [www.dotenvx.com]
+Review server running on http://localhost:10000
+Connected to MongoDB Atlas
+==> Your service is live 🎉
+==> 
+==> ///////////////////////////////////////////////////////////
+==> 
+==> Available at your primary URL https://hypomomo.onrender.com
+==> 
+==> ///////////////////////////////////////////////////////////
