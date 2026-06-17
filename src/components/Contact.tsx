@@ -189,13 +189,13 @@ export function Contact() {
             </p>
 
             <div className="flex justify-center gap-6">
-              <a href="#" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-momo-gold hover:bg-momo-gold hover:text-deep-black transition-all hover:scale-110">
+              <a href="https://www.instagram.com/hypemomo" target="_blank" rel="noopener noreferrer" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-momo-gold hover:bg-momo-gold hover:text-deep-black transition-all hover:scale-110">
                 <Instagram className="w-7 h-7" />
               </a>
-              <a href="#" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-spicy-red hover:bg-spicy-red hover:text-pure-white transition-all hover:scale-110">
+              <a href="https://www.facebook.com/share/18qyrHetDZ/" target="_blank" rel="noopener noreferrer" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-spicy-red hover:bg-spicy-red hover:text-pure-white transition-all hover:scale-110">
                 <Facebook className="w-7 h-7" />
               </a>
-              <a href="#" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-spicy-red hover:bg-spicy-red hover:text-pure-white transition-all hover:scale-110">
+              <a href="https://www.youtube.com/@HYPEMOMO" target="_blank" rel="noopener noreferrer" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-spicy-red hover:bg-spicy-red hover:text-pure-white transition-all hover:scale-110">
                 <Youtube className="w-7 h-7" />
               </a>
               <a href="#" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-momo-gold hover:bg-momo-gold hover:text-deep-black transition-all hover:scale-110">

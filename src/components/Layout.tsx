@@ -123,13 +123,13 @@ export function Layout({ children, onOpenReview }: LayoutProps) {
               Hype Momo is a rapidly growing food brand, founded in 2026 by two young and passionate entrepreneurs – Sandeep Kamat and Raju Kamat.
             </p>
             <div className="flex gap-4 mt-2">
-              <a href="#" className="text-on-surface-variant hover:text-momo-gold transition-all">
+              <a href="https://www.facebook.com/share/18qyrHetDZ/" target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-momo-gold transition-all">
                 <Facebook className="w-5 h-5" />
               </a>
-              <a href="#" className="text-on-surface-variant hover:text-spicy-red transition-all">
+              <a href="https://www.instagram.com/hypemomo" target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-spicy-red transition-all">
                 <Instagram className="w-5 h-5" />
               </a>
-              <a href="#" className="text-on-surface-variant hover:text-spicy-red transition-all">
+              <a href="https://www.youtube.com/@HYPEMOMO" target="_blank" rel="noopener noreferrer" className="text-on-surface-variant hover:text-spicy-red transition-all">
                 <Youtube className="w-5 h-5" />
               </a>
             </div>
