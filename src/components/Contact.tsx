@@ -198,9 +198,6 @@ export function Contact() {
               <a href="https://www.youtube.com/@HYPEMOMO" target="_blank" rel="noopener noreferrer" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-spicy-red hover:bg-spicy-red hover:text-pure-white transition-all hover:scale-110">
                 <Youtube className="w-7 h-7" />
               </a>
-              <a href="#" className="w-16 h-16 rounded-full bg-deep-black border border-momo-gold/30 flex items-center justify-center text-momo-gold hover:bg-momo-gold hover:text-deep-black transition-all hover:scale-110">
-                <MessageCircle className="w-7 h-7" />
-              </a>
             </div>
           </motion.div>
 
