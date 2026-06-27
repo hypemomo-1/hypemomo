@@ -20,25 +20,32 @@ let lastWaStatus = 'initializing';
 async function findWhatsAppGroup(tryCount = 0): Promise<boolean> {
   if (!whatsappClient) return false;
   try {
+    console.log(`  ℹ Fetching chats (attempt ${tryCount + 1})...`);
     const chats = await whatsappClient.getChats();
+    console.log(`  ℹ Total chats: ${chats.length}`);
+
     const groups = chats.filter(c => c.isGroup);
+    console.log(`  ℹ Groups found: ${groups.length}`);
+
+    if (chats.length > 0 && groups.length === 0) {
+      console.log(`  ℹ First 3 chat names: ${chats.slice(0, 3).map(c => `"${c.name || '(no name)'}"`).join(', ')}`);
+    }
 
     if (groups.length === 0 && tryCount < 5) {
-      console.log(`  ⚠ No groups loaded yet, retrying (${tryCount + 1}/5)...`);
-      await new Promise(r => setTimeout(r, 3000));
+      console.log(`  ⚠ Retrying in 5s...`);
+      await new Promise(r => setTimeout(r, 5000));
       return findWhatsAppGroup(tryCount + 1);
     }
 
     if (groups.length === 0) {
-      console.log('  ⚠ No WhatsApp groups found - add your number to a group first');
+      console.log('  ⚠ No WhatsApp groups found at all');
+      console.log('  ℹ Make sure your WhatsApp number is added to a group');
+      console.log('  ℹ After adding, refresh: http://localhost:3001/api/wa-refresh');
       return false;
     }
 
-    // List all available groups
-    console.log(`  ℹ Available WhatsApp groups (${groups.length}):`);
-    groups.forEach(g => console.log(`     ${g.id._serialized === whatsappGroupId ? '✓' : ' '} "${g.name}"`));
+    groups.forEach((g, i) => console.log(`     ${i + 1}. "${g.name}" (${g.id._serialized})`));
 
-    // Try to find the configured group
     const groupName = (process.env.WHATSAPP_GROUP_NAME || '').trim();
     if (groupName) {
       const group = groups.find(c => c.name === groupName);
@@ -47,17 +54,16 @@ async function findWhatsAppGroup(tryCount = 0): Promise<boolean> {
         console.log(`  ✓ Using configured group: "${groupName}"`);
         return true;
       }
-      console.log(`  ⚠ Configured group "${groupName}" not found`);
+      console.log(`  ⚠ "${groupName}" not in list, using first group`);
     }
 
-    // Fallback: use the first group
-    console.log(`  ℹ Using first available group: "${groups[0].name}"`);
     whatsappGroupId = groups[0].id._serialized;
+    console.log(`  ✓ Using: "${groups[0].name}"`);
     return true;
   } catch (err: any) {
-    console.log(`  ⚠ Could not fetch chats: ${err.message}`);
+    console.log(`  ⚠ Error: ${err.message}`);
     if (tryCount < 5) {
-      await new Promise(r => setTimeout(r, 3000));
+      await new Promise(r => setTimeout(r, 5000));
       return findWhatsAppGroup(tryCount + 1);
     }
     return false;
@@ -222,6 +228,23 @@ app.get('/api/wa-refresh', async (_req, res) => {
   whatsappGroupId = null;
   const found = await findWhatsAppGroup();
   res.json({ success: found, groupFound: !!whatsappGroupId, groupName: process.env.WHATSAPP_GROUP_NAME });
+});
+
+app.get('/api/wa-chats', async (_req, res) => {
+  if (!whatsappClient || !whatsappReady) {
+    return res.json({ success: false, message: 'WhatsApp not ready', status: lastWaStatus });
+  }
+  try {
+    const chats = await whatsappClient.getChats();
+    res.json({
+      success: true,
+      total: chats.length,
+      groups: chats.filter(c => c.isGroup).map(c => ({ name: c.name, id: c.id._serialized })),
+      sample: chats.slice(0, 5).map(c => ({ name: c.name || '(unnamed)', isGroup: c.isGroup, id: c.id._serialized })),
+    });
+  } catch (err: any) {
+    res.json({ success: false, message: err.message });
+  }
 });
 
 app.post('/api/review', async (req, res) => {
