@@ -6,6 +6,7 @@ const qrcode = createRequire(import.meta.url)('qrcode-terminal');
 import dotenv from 'dotenv';
 import path from 'path';
 import fs from 'fs';
+import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
 import { Review } from './src/models/Review.js';
 
@@ -52,10 +53,21 @@ async function findWhatsAppGroup(tryCount = 0): Promise<boolean> {
 
 function clearWASession() {
   const dir = path.join(process.cwd(), '.wwebjs_auth');
-  if (fs.existsSync(dir)) {
-    fs.rmSync(dir, { recursive: true, force: true });
-    console.log('  🗑 Cleared old WhatsApp session');
+  if (!fs.existsSync(dir)) return;
+  for (let i = 0; i < 5; i++) {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+      console.log('  🗑 Cleared old WhatsApp session');
+      return;
+    } catch (err: any) {
+      if (err.code === 'EBUSY' || err.code === 'EPERM') {
+        console.log(`  ⚠ Session file locked, retrying (${i + 1}/5)...`);
+        // Try to kill any Chrome processes holding the lock
+        try { execSync('taskkill /f /im chrome.exe 2>nul', { stdio: 'ignore' }); } catch {}
+      }
+    }
   }
+  console.log('  ⚠ Could not clear session folder entirely');
 }
 
 let restarting = false;
@@ -63,11 +75,12 @@ let restarting = false;
 async function restartWhatsApp() {
   if (restarting) return;
   restarting = true;
-  clearWASession();
   if (whatsappClient) {
     try { await whatsappClient.destroy(); } catch {}
     whatsappClient = null;
   }
+  await new Promise(r => setTimeout(r, 1000));
+  clearWASession();
   restarting = false;
   initWhatsApp();
 }
@@ -115,10 +128,17 @@ async function initWhatsApp() {
     whatsappReady = false;
     lastWaStatus = 'disconnected';
     console.log('  ⚠ WhatsApp disconnected:', reason);
-    console.log('  ℹ Reconnecting in 10 seconds...');
-    setTimeout(() => {
-      try { client.initialize(); } catch {}
-    }, 10000);
+    if (reason === 'LOGOUT') {
+      console.log('  ℹ Session logged out from phone. Restarting with fresh QR...');
+      restartWhatsApp();
+    } else {
+      console.log('  ℹ Reconnecting in 10 seconds...');
+      setTimeout(() => {
+        if (!restarting) {
+          try { client.initialize(); } catch (e: any) { console.error('  ✗ Reconnect failed:', e.message); }
+        }
+      }, 10000);
+    }
   });
 
   try {
