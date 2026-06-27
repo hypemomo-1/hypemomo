@@ -10,49 +10,81 @@ import { Review } from './src/models/Review.js';
 
 dotenv.config();
 
-const whatsappClient = new Client({
-  authStrategy: new LocalAuth(),
-  puppeteer: {
-    headless: true,
-    executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
-  },
-});
-
 let whatsappGroupId: string | null = null;
+let whatsappReady = false;
+let whatsappClient: Client | null = null;
 
 async function findWhatsAppGroup() {
   const groupName = process.env.WHATSAPP_GROUP_NAME;
-  if (!groupName) return;
+  if (!groupName || !whatsappClient) return;
   try {
     const chats = await whatsappClient.getChats();
     const group = chats.find(c => c.name === groupName && c.isGroup);
     if (group) {
       whatsappGroupId = group.id._serialized;
-      console.log(`WhatsApp group "${groupName}" found`);
+      console.log(`  ✓ WhatsApp group "${groupName}" found`);
     } else {
-      console.log(`WhatsApp group "${groupName}" not found`);
+      console.log(`  ⚠ WhatsApp group "${groupName}" not found - make sure the bot is added to the group`);
     }
   } catch {
-    console.log('Could not fetch WhatsApp chats yet');
+    console.log('  ⚠ Could not fetch WhatsApp chats yet');
   }
 }
 
-whatsappClient.on('qr', (qr) => {
-  qrcode.generate(qr, { small: true });
-  console.log('Scan the QR code with WhatsApp to enable notifications');
-});
+async function initWhatsApp() {
+  const client = new Client({
+    authStrategy: new LocalAuth(),
+    puppeteer: {
+      headless: true,
+      executablePath: 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    },
+  });
+  whatsappClient = client;
 
-whatsappClient.on('ready', () => {
-  console.log('WhatsApp client ready!');
-  findWhatsAppGroup();
-});
+  client.on('qr', (qr) => {
+    console.log('\n══════════════════════════════════════════');
+    console.log('  📱 SCAN THIS QR CODE WITH WHATSAPP');
+    console.log('  Open WhatsApp → Linked Devices → Link a Device');
+    console.log('══════════════════════════════════════════\n');
+    qrcode.generate(qr, { small: true });
+    console.log('');
+  });
 
-whatsappClient.on('disconnected', (reason) => {
-  console.log('WhatsApp disconnected:', reason);
-  setTimeout(() => whatsappClient.initialize(), 10000);
-});
+  client.on('authenticated', () => {
+    console.log('  ✓ WhatsApp authenticated');
+  });
 
-whatsappClient.initialize();
+  client.on('auth_failure', (msg) => {
+    console.error('  ✗ WhatsApp authentication failed:', msg);
+  });
+
+  client.on('ready', () => {
+    whatsappReady = true;
+    console.log('  ✓ WhatsApp connected successfully!');
+    findWhatsAppGroup();
+  });
+
+  client.on('disconnected', (reason) => {
+    whatsappReady = false;
+    console.log('  ⚠ WhatsApp disconnected:', reason);
+    console.log('  ℹ Reconnecting in 10 seconds...');
+    setTimeout(() => {
+      try { client.initialize(); } catch {}
+    }, 10000);
+  });
+
+  try {
+    await client.initialize();
+  } catch (err: any) {
+    console.error('  ✗ WhatsApp initialization failed:', err.message);
+    if (err.message?.includes('Chrome')) {
+      console.log('  ℹ Make sure Chrome is installed or check the executablePath');
+    }
+    console.log('  ℹ Server will continue without WhatsApp notifications');
+  }
+}
+
+initWhatsApp();
 
 const MONGODB_URI = process.env.MONGODB_URI || '';
 
@@ -91,18 +123,20 @@ app.post('/api/review', async (req, res) => {
 
     const waMsg = `🔥 *New Review from ${name}*\n\n⭐ ${ratingStars} (${rating}/5)\n📞 ${phone}\n📧 ${email}\n💬 "${feedback}"`;
 
-    if (whatsappGroupId) {
-      whatsappClient.sendMessage(whatsappGroupId, waMsg)
-        .then(() => console.log('WhatsApp notification sent'))
-        .catch((err: any) => console.error('WhatsApp send error:', err.message));
-    } else {
-      findWhatsAppGroup().then(() => {
-        if (whatsappGroupId) {
-          whatsappClient.sendMessage(whatsappGroupId, waMsg)
-            .then(() => console.log('WhatsApp notification sent'))
-            .catch((err: any) => console.error('WhatsApp send error:', err.message));
-        }
-      });
+    if (whatsappReady && whatsappClient) {
+      if (whatsappGroupId) {
+        whatsappClient.sendMessage(whatsappGroupId, waMsg)
+          .then(() => console.log('WhatsApp notification sent'))
+          .catch((err: any) => console.error('WhatsApp send error:', err.message));
+      } else {
+        findWhatsAppGroup().then(() => {
+          if (whatsappGroupId && whatsappClient) {
+            whatsappClient.sendMessage(whatsappGroupId, waMsg)
+              .then(() => console.log('WhatsApp notification sent'))
+              .catch((err: any) => console.error('WhatsApp send error:', err.message));
+          }
+        });
+      }
     }
   } catch (err: any) {
     console.error('Server error:', err.message);
@@ -114,6 +148,14 @@ app.get('*', (_req, res) => {
   res.sendFile(path.join(__dirname, 'dist', 'index.html'));
 });
 
-app.listen(PORT, () => {
-  console.log(`Review server running on http://localhost:${PORT}`);
+const server = app.listen(PORT, () => {
+  console.log(`\n  🚀 Review server running on http://localhost:${PORT}\n`);
+});
+
+server.on('error', (err: any) => {
+  if (err.code === 'EADDRINUSE') {
+    console.error(`  ✗ Port ${PORT} is already in use. Close the other server or use a different port.`);
+  } else {
+    console.error('  ✗ Server error:', err.message);
+  }
 });
