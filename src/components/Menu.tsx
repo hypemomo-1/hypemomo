@@ -192,9 +192,7 @@ export function Menu() {
                 </div>
               ))}
             </div>
-            <button className="w-full mt-8 py-3 bg-transparent border-2 border-momo-gold text-momo-gold font-label-bold rounded-lg hover:bg-momo-gold hover:text-black transition-all uppercase active:scale-95">
-              View All Sides
-            </button>
+            
           </div>
         </div>
       </div>

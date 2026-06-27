@@ -32,7 +32,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route element={<LayoutOutlet onOpenReview={() => setReviewOpen(true)} />}>
-          <Route path="/home" element={<Home />} />
+          <Route path="/home" element={<Home onOpenReview={() => setReviewOpen(true)} />} />
           <Route path="/menu" element={<Menu />} />
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
