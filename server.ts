@@ -19,45 +19,76 @@ let lastWaStatus = 'initializing';
 
 async function findWhatsAppGroup(): Promise<boolean> {
   if (!whatsappClient) return false;
+
+  // Method 1: Direct group ID from .env (most reliable)
+  const directId = (process.env.WHATSAPP_GROUP_ID || '').trim();
+  if (directId) {
+    whatsappGroupId = directId;
+    console.log(`  ✓ Using direct group ID from .env`);
+    return true;
+  }
+
+  // Method 2: getChats() API
   try {
     const chats = await whatsappClient.getChats();
     const groups = chats.filter(c => (c.id?._serialized || '').endsWith('@g.us'));
 
-    if (groups.length === 0) {
-      console.log(`  ⚠ No groups found among ${chats.length} chats`);
-      if (chats.length > 0) {
-        console.log(`  ℹ Sample IDs: ${chats.slice(0, 3).map(c => c.id?._serialized || '?').join(', ')}`);
-        console.log('  ℹ These are individual chats, not groups. Add number to a group first.');
-      } else {
-        console.log('  ℹ No chats at all. WhatsApp may still be loading.');
+    if (groups.length > 0) {
+      console.log(`  ℹ Groups via API (${groups.length}):`);
+      groups.forEach((g, i) => console.log(`     ${i + 1}. "${g.name}"`));
+
+      const targetName = (process.env.WHATSAPP_GROUP_NAME || '').trim().toLowerCase();
+      if (targetName) {
+        const match = groups.find(g => g.name.toLowerCase() === targetName);
+        if (match) {
+          whatsappGroupId = match.id._serialized;
+          console.log(`  ✓ Matched group: "${match.name}"`);
+          return true;
+        }
+        console.log(`  ⚠ "${process.env.WHATSAPP_GROUP_NAME}" not found, using first group`);
       }
-      return false;
+      whatsappGroupId = groups[0].id._serialized;
+      console.log(`  ✓ Using: "${groups[0].name}"`);
+      return true;
     }
-
-    console.log(`  ℹ Groups found (${groups.length}):`);
-    groups.forEach((g, i) => {
-      const active = g.id._serialized === whatsappGroupId ? ' ✓' : '';
-      console.log(`     ${i + 1}. "${g.name}"${active}`);
-    });
-
-    const targetName = (process.env.WHATSAPP_GROUP_NAME || '').trim().toLowerCase();
-    if (targetName) {
-      const match = groups.find(g => g.name.toLowerCase() === targetName);
-      if (match) {
-        whatsappGroupId = match.id._serialized;
-        console.log(`  ✓ Matched group: "${match.name}"`);
-        return true;
-      }
-      console.log(`  ⚠ No group named "${process.env.WHATSAPP_GROUP_NAME}". Using first group.`);
-    }
-
-    whatsappGroupId = groups[0].id._serialized;
-    console.log(`  ✓ Using: "${groups[0].name}"`);
-    return true;
   } catch (err: any) {
-    console.log(`  ⚠ findWhatsAppGroup error: ${err.message}`);
-    return false;
+    console.log(`  ⚠ API getChats() failed: ${err.message}`);
   }
+
+  // Method 3: Direct pupPage access to WhatsApp Web Store
+  try {
+    const pageGroups = await whatsappClient.pupPage.evaluate(() => {
+      try {
+        return window.Store.Chat.map(c => ({
+          name: c.name || c.formattedTitle || '',
+          id: c.id._serialized || '',
+        }));
+      } catch { return []; }
+    });
+    const groups = pageGroups.filter(g => g.id.endsWith('@g.us'));
+    if (groups.length > 0) {
+      console.log(`  ℹ Groups via Store (${groups.length}):`);
+      groups.forEach((g, i) => console.log(`     ${i + 1}. "${g.name}"`));
+
+      const targetName = (process.env.WHATSAPP_GROUP_NAME || '').trim().toLowerCase();
+      if (targetName) {
+        const match = groups.find(g => g.name.toLowerCase() === targetName);
+        if (match) {
+          whatsappGroupId = match.id;
+          console.log(`  ✓ Matched group: "${match.name}"`);
+          return true;
+        }
+      }
+      whatsappGroupId = groups[0].id;
+      console.log(`  ✓ Using: "${groups[0].name}"`);
+      return true;
+    }
+    console.log('  ⚠ No groups found via Store either');
+  } catch (err: any) {
+    console.log(`  ⚠ Store access failed: ${err.message}`);
+  }
+
+  return false;
 }
 
 function clearWASession() {
@@ -210,10 +241,19 @@ app.get('/api/wa-groups', async (_req, res) => {
     return res.json({ success: false, message: 'WhatsApp not ready', status: lastWaStatus });
   }
   try {
-    const chats = await whatsappClient.getChats();
-    const allChats = chats.map(c => ({ name: c.name || '(unnamed)', id: c.id?._serialized || '?', isGroup: (c.id?._serialized || '').endsWith('@g.us') }));
-    const groups = allChats.filter(c => c.isGroup);
-    res.json({ success: true, totalChats: chats.length, groups, allChats: allChats.slice(0, 10) });
+    const apiGroups: any[] = [];
+    const storeGroups: any[] = [];
+    try {
+      const chats = await whatsappClient.getChats();
+      chats.filter(c => (c.id?._serialized || '').endsWith('@g.us')).forEach(g => apiGroups.push({ name: g.name, id: g.id._serialized }));
+    } catch {}
+    try {
+      const store = await whatsappClient.pupPage.evaluate(() => {
+        try { return (window.Store?.Chat || []).map(c => ({ name: c.name || c.formattedTitle || '', id: c.id._serialized })); } catch { return []; }
+      });
+      store.filter(g => g.id.endsWith('@g.us')).forEach(g => storeGroups.push(g));
+    } catch {}
+    res.json({ success: true, whatsappGroupId, apiGroups, storeGroups, groupName: process.env.WHATSAPP_GROUP_NAME });
   } catch (err: any) {
     res.json({ success: false, message: err.message });
   }
@@ -230,13 +270,13 @@ app.get('/api/wa-chats', async (_req, res) => {
     return res.json({ success: false, message: 'WhatsApp not ready', status: lastWaStatus });
   }
   try {
-    const chats = await whatsappClient.getChats();
-    res.json({
-      success: true,
-      total: chats.length,
-      groups: chats.filter(c => (c.id?._serialized || '').endsWith('@g.us')).map(c => ({ name: c.name, id: c.id._serialized })),
-      sample: chats.slice(0, 10).map(c => ({ name: c.name || '(unnamed)', id: c.id?._serialized || '?' })),
-    });
+    let storeData = null;
+    try {
+      storeData = await whatsappClient.pupPage.evaluate(() => {
+        try { return (window.Store?.Chat || []).slice(0, 20).map(c => ({ name: c.name || c.formattedTitle || '', id: c.id._serialized })); } catch { return null; }
+      });
+    } catch {}
+    res.json({ success: true, whatsappGroupId, storeData, groupName: process.env.WHATSAPP_GROUP_NAME });
   } catch (err: any) {
     res.json({ success: false, message: err.message });
   }
@@ -269,16 +309,22 @@ app.post('/api/review', async (req, res) => {
 
     res.json({ success: true, message: 'Review submitted!' });
 
-    if (whatsappClient && whatsappReady && whatsappGroupId) {
-      const waMsg = `🔥 *New Review from ${name}*\n\n⭐ ${ratingStars} (${rating}/5)\n📞 ${phone}\n📧 ${email}\n💬 "${feedback}"`;
-      try {
-        await whatsappClient.sendMessage(whatsappGroupId, waMsg);
-        console.log('  ✓ WhatsApp notification sent!');
-      } catch (err: any) {
-        console.error('  ✗ WhatsApp send fail:', err.message);
+    const waMsg = `🔥 *New Review from ${name}*\n\n⭐ ${ratingStars} (${rating}/5)\n📞 ${phone}\n📧 ${email}\n💬 "${feedback}"`;
+
+    if (whatsappClient && whatsappReady) {
+      if (!whatsappGroupId) await findWhatsAppGroup();
+      if (whatsappGroupId) {
+        try {
+          await whatsappClient.sendMessage(whatsappGroupId, waMsg);
+          console.log('  ✓ WhatsApp notification sent!');
+        } catch (err: any) {
+          console.error('  ✗ WhatsApp send fail:', err.message);
+        }
+      } else {
+        console.log('  ⚠ WA skipped: no group available');
       }
     } else {
-      console.log(`  ⚠ WA skipped: ready=${whatsappReady} client=${!!whatsappClient} groupId=${!!whatsappGroupId}`);
+      console.log(`  ⚠ WA skipped: ready=${whatsappReady} client=${!!whatsappClient}`);
     }
   } catch (err: any) {
     console.error('Server error:', err.message);
