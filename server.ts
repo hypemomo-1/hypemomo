@@ -5,6 +5,7 @@ const { Client, LocalAuth } = createRequire(import.meta.url)('whatsapp-web.js');
 const qrcode = createRequire(import.meta.url)('qrcode-terminal');
 import dotenv from 'dotenv';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { Review } from './src/models/Review.js';
 
@@ -32,6 +33,28 @@ async function findWhatsAppGroup() {
   }
 }
 
+function clearWASession() {
+  const dir = path.join(process.cwd(), '.wwebjs_auth');
+  if (fs.existsSync(dir)) {
+    fs.rmSync(dir, { recursive: true, force: true });
+    console.log('  🗑 Cleared old WhatsApp session');
+  }
+}
+
+let restarting = false;
+
+async function restartWhatsApp() {
+  if (restarting) return;
+  restarting = true;
+  clearWASession();
+  if (whatsappClient) {
+    try { await whatsappClient.destroy(); } catch {}
+    whatsappClient = null;
+  }
+  restarting = false;
+  initWhatsApp();
+}
+
 async function initWhatsApp() {
   const client = new Client({
     authStrategy: new LocalAuth(),
@@ -57,10 +80,11 @@ async function initWhatsApp() {
     console.log('  ✓ WhatsApp authenticated');
   });
 
-  client.on('auth_failure', (msg) => {
+  client.on('auth_failure', async (msg) => {
     lastWaStatus = 'auth_failed';
     console.error('  ✗ WhatsApp authentication failed:', msg);
-    console.log('  ℹ Restart server or delete .wwebjs_auth folder to retry');
+    console.log('  ℹ Auto-restarting with fresh QR...');
+    restartWhatsApp();
   });
 
   client.on('ready', () => {
@@ -87,7 +111,8 @@ async function initWhatsApp() {
     if (err.message?.includes('Chrome')) {
       console.log('  ℹ Make sure Chrome is installed or check the executablePath');
     }
-    console.log('  ℹ Server will continue without WhatsApp notifications');
+    console.log('  ℹ Auto-retrying with fresh session...');
+    restartWhatsApp();
   }
 }
 
