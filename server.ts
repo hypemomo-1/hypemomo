@@ -96,14 +96,15 @@ let restarting = false;
 async function restartWhatsApp() {
   if (restarting) return;
   restarting = true;
-  if (whatsappClient) {
-    try { await whatsappClient.destroy(); } catch {}
-    whatsappClient = null;
-  }
-  await new Promise(r => setTimeout(r, 1000));
+  whatsappReady = false;
+  whatsappGroupId = null;
+  whatsappClient = null;
+  lastWaStatus = 'restarting';
+  try { execSync('taskkill /f /im chrome.exe 2>nul', { stdio: 'ignore' }); } catch {}
+  await new Promise(r => setTimeout(r, 2000));
   clearWASession();
   restarting = false;
-  initWhatsApp();
+try { initWhatsApp(); } catch (err: any) { console.error('  ✗ WhatsApp init error:', err.message); }
 }
 
 async function initWhatsApp() {
@@ -131,11 +132,11 @@ async function initWhatsApp() {
     console.log('  ✓ WhatsApp authenticated');
   });
 
-  client.on('auth_failure', async (msg) => {
+  client.on('auth_failure', (msg) => {
     lastWaStatus = 'auth_failed';
     console.error('  ✗ WhatsApp authentication failed:', msg);
     console.log('  ℹ Auto-restarting with fresh QR...');
-    restartWhatsApp();
+    setTimeout(() => { try { restartWhatsApp(); } catch {} }, 1000);
   });
 
   client.on('ready', () => {
@@ -163,7 +164,7 @@ async function initWhatsApp() {
     console.log('  ⚠ WhatsApp disconnected:', reason);
     if (reason === 'LOGOUT') {
       console.log('  ℹ Session logged out from phone. Restarting with fresh QR...');
-      restartWhatsApp();
+      setTimeout(() => { try { restartWhatsApp(); } catch {} }, 2000);
     } else {
       console.log('  ℹ Reconnecting in 10 seconds...');
       setTimeout(() => {
@@ -178,11 +179,16 @@ async function initWhatsApp() {
     await client.initialize();
   } catch (err: any) {
     console.error('  ✗ WhatsApp initialization failed:', err.message);
-    if (err.message?.includes('Chrome')) {
-      console.log('  ℹ Make sure Chrome is installed or check the executablePath');
+    if (err.message?.includes('Chrome') || err.message?.includes('detached')) {
+      console.log('  ℹ Killing Chrome and retrying...');
+      try { execSync('taskkill /f /im chrome.exe 2>nul', { stdio: 'ignore' }); } catch {}
+      await new Promise(r => setTimeout(r, 3000));
+      clearWASession();
+      setTimeout(() => initWhatsApp(), 1000);
+    } else {
+      console.log('  ℹ Auto-retrying in 5s...');
+      setTimeout(() => initWhatsApp(), 5000);
     }
-    console.log('  ℹ Auto-retrying with fresh session...');
-    restartWhatsApp();
   }
 }
 
