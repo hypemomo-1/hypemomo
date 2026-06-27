@@ -16,20 +16,37 @@ let whatsappReady = false;
 let whatsappClient: Client | null = null;
 let lastWaStatus = 'initializing';
 
-async function findWhatsAppGroup() {
-  const groupName = process.env.WHATSAPP_GROUP_NAME;
-  if (!groupName || !whatsappClient) return;
+async function findWhatsAppGroup(tryCount = 0): Promise<boolean> {
+  const groupName = (process.env.WHATSAPP_GROUP_NAME || '').trim();
+  if (!groupName || !whatsappClient) return false;
   try {
     const chats = await whatsappClient.getChats();
-    const group = chats.find(c => c.name === groupName && c.isGroup);
+    const groups = chats.filter(c => c.isGroup);
+    const group = groups.find(c => c.name === groupName);
     if (group) {
       whatsappGroupId = group.id._serialized;
       console.log(`  ✓ WhatsApp group "${groupName}" found`);
-    } else {
-      console.log(`  ⚠ WhatsApp group "${groupName}" not found - make sure the bot is added to the group`);
+      return true;
     }
-  } catch {
-    console.log('  ⚠ Could not fetch WhatsApp chats yet');
+    if (groups.length === 0 && tryCount < 3) {
+      console.log(`  ⚠ No groups loaded yet, retrying (${tryCount + 1}/3)...`);
+      await new Promise(r => setTimeout(r, 2000));
+      return findWhatsAppGroup(tryCount + 1);
+    }
+    if (groups.length > 0) {
+      console.log(`  ⚠ Group "${groupName}" not found. Available groups:`);
+      groups.forEach(g => console.log(`     - "${g.name}"`));
+    } else {
+      console.log(`  ⚠ No WhatsApp groups found - make sure your number is added to a group`);
+    }
+    return false;
+  } catch (err: any) {
+    console.log(`  ⚠ Could not fetch chats: ${err.message}`);
+    if (tryCount < 3) {
+      await new Promise(r => setTimeout(r, 2000));
+      return findWhatsAppGroup(tryCount + 1);
+    }
+    return false;
   }
 }
 
@@ -138,8 +155,31 @@ app.get('/api/health', (_req, res) => {
   res.json({
     status: 'Hype Momo Review Server is running',
     whatsapp: { ready: whatsappReady, status: lastWaStatus, groupFound: !!whatsappGroupId },
-    endpoints: { 'POST /api/review': 'Submit a review' },
+    endpoints: {
+      'POST /api/review': 'Submit a review',
+      'GET /api/wa-groups': 'List available WhatsApp groups',
+      'GET /api/wa-refresh': 'Re-scan for WhatsApp group',
+    },
   });
+});
+
+app.get('/api/wa-groups', async (_req, res) => {
+  if (!whatsappClient || !whatsappReady) {
+    return res.json({ success: false, message: 'WhatsApp not ready', status: lastWaStatus });
+  }
+  try {
+    const chats = await whatsappClient.getChats();
+    const groups = chats.filter(c => c.isGroup).map(c => ({ name: c.name, id: c.id._serialized }));
+    res.json({ success: true, groups });
+  } catch (err: any) {
+    res.json({ success: false, message: err.message });
+  }
+});
+
+app.get('/api/wa-refresh', async (_req, res) => {
+  whatsappGroupId = null;
+  const found = await findWhatsAppGroup();
+  res.json({ success: found, groupFound: !!whatsappGroupId, groupName: process.env.WHATSAPP_GROUP_NAME });
 });
 
 app.post('/api/review', async (req, res) => {
