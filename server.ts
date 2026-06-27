@@ -13,6 +13,7 @@ dotenv.config();
 let whatsappGroupId: string | null = null;
 let whatsappReady = false;
 let whatsappClient: Client | null = null;
+let lastWaStatus = 'initializing';
 
 async function findWhatsAppGroup() {
   const groupName = process.env.WHATSAPP_GROUP_NAME;
@@ -42,6 +43,7 @@ async function initWhatsApp() {
   whatsappClient = client;
 
   client.on('qr', (qr) => {
+    lastWaStatus = 'awaiting_scan';
     console.log('\n══════════════════════════════════════════');
     console.log('  📱 SCAN THIS QR CODE WITH WHATSAPP');
     console.log('  Open WhatsApp → Linked Devices → Link a Device');
@@ -51,21 +53,26 @@ async function initWhatsApp() {
   });
 
   client.on('authenticated', () => {
+    lastWaStatus = 'authenticated';
     console.log('  ✓ WhatsApp authenticated');
   });
 
   client.on('auth_failure', (msg) => {
+    lastWaStatus = 'auth_failed';
     console.error('  ✗ WhatsApp authentication failed:', msg);
+    console.log('  ℹ Restart server or delete .wwebjs_auth folder to retry');
   });
 
   client.on('ready', () => {
     whatsappReady = true;
+    lastWaStatus = 'ready';
     console.log('  ✓ WhatsApp connected successfully!');
     findWhatsAppGroup();
   });
 
   client.on('disconnected', (reason) => {
     whatsappReady = false;
+    lastWaStatus = 'disconnected';
     console.log('  ⚠ WhatsApp disconnected:', reason);
     console.log('  ℹ Reconnecting in 10 seconds...');
     setTimeout(() => {
@@ -103,7 +110,11 @@ const __dirname = path.dirname(__filename);
 app.use(express.static(path.join(__dirname, 'dist')));
 
 app.get('/api/health', (_req, res) => {
-  res.json({ status: 'Hype Momo Review Server is running', endpoints: { 'POST /api/review': 'Submit a review' } });
+  res.json({
+    status: 'Hype Momo Review Server is running',
+    whatsapp: { ready: whatsappReady, status: lastWaStatus, groupFound: !!whatsappGroupId },
+    endpoints: { 'POST /api/review': 'Submit a review' },
+  });
 });
 
 app.post('/api/review', async (req, res) => {
@@ -123,20 +134,25 @@ app.post('/api/review', async (req, res) => {
 
     const waMsg = `🔥 *New Review from ${name}*\n\n⭐ ${ratingStars} (${rating}/5)\n📞 ${phone}\n📧 ${email}\n💬 "${feedback}"`;
 
-    if (whatsappReady && whatsappClient) {
-      if (whatsappGroupId) {
-        whatsappClient.sendMessage(whatsappGroupId, waMsg)
-          .then(() => console.log('WhatsApp notification sent'))
-          .catch((err: any) => console.error('WhatsApp send error:', err.message));
-      } else {
-        findWhatsAppGroup().then(() => {
-          if (whatsappGroupId && whatsappClient) {
-            whatsappClient.sendMessage(whatsappGroupId, waMsg)
-              .then(() => console.log('WhatsApp notification sent'))
-              .catch((err: any) => console.error('WhatsApp send error:', err.message));
-          }
-        });
-      }
+    if (!whatsappClient) {
+      console.log('  ⚠ WA notification skipped: client not initialized');
+    } else if (!whatsappReady) {
+      console.log(`  ⚠ WA notification skipped: not ready (status: ${lastWaStatus})`);
+    } else if (whatsappGroupId) {
+      whatsappClient.sendMessage(whatsappGroupId, waMsg)
+        .then(() => console.log('  ✓ WhatsApp notification sent to group'))
+        .catch((err: any) => console.error('  ✗ WhatsApp send error:', err.message));
+    } else {
+      console.log('  ℹ WA group ID not cached, trying to find group...');
+      findWhatsAppGroup().then(() => {
+        if (whatsappGroupId && whatsappClient) {
+          whatsappClient.sendMessage(whatsappGroupId, waMsg)
+            .then(() => console.log('  ✓ WhatsApp notification sent to group'))
+            .catch((err: any) => console.error('  ✗ WhatsApp send error:', err.message));
+        } else {
+          console.log('  ⚠ WA notification skipped: group not found');
+        }
+      });
     }
   } catch (err: any) {
     console.error('Server error:', err.message);
